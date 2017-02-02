@@ -1,0 +1,5 @@
+ 15:45 gmontero : so yeah i think it could be replaced but some rework of one of the jenkins_plugin.go test cases is need .... see                           
+                : https://github.com/openshift/origin/blob/master/test/extended/testdata/jenkins-plugin/create-job.xml ,                                     
+                : https://github.com/openshift/origin/blob/master/test/extended/testdata/jenkins-plugin/delete-job-keys.xml ,                                
+                : https://github.com/openshift/origin/blob/master/test/extended/testdata/jenkins-plugin/delet                                                
+ 15:46 gmontero : basing that stuff off of ruby-hello-world seems doable to me at first blush  
