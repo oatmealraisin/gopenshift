@@ -1,2 +1,0 @@
-export KUBECONFIG=/tmp/openshift/test-extended/networking/multitenant/openshift.local.config/master/admin.kubeconfig
-export PATH=$PATH:/home/rymurphy/documents/projects/go/src/github.com/openshift/origin/_output/local/bin/linux/amd64

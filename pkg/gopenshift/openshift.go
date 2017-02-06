@@ -3,13 +3,12 @@ package gopenshift
 import (
 	"fmt"
 
+	"github.com/openshift/origin/pkg/client"
+	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
+	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api/meta"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/runtime"
-
-	"github.com/oatmealraisin/gopenshift/pkg/client"
-	"github.com/oatmealraisin/gopenshift/pkg/cmd/util/clientcmd"
-	"github.com/spf13/cobra"
 )
 
 type OpenShift struct {
@@ -26,7 +25,7 @@ func New() *OpenShift {
 	command := &cobra.Command{}
 	cmdutil.AddPrinterFlags(command)
 	factory := clientcmd.New(command.Flags())
-	mapper, typer := factory.Object(cmdutil.GetIncludeThirdPartyAPIs(command))
+	mapper, typer := factory.Object()
 	return &OpenShift{
 		Command: command,
 		Factory: factory,
@@ -56,8 +55,7 @@ func (o *OpenShift) Logs(resource string) string {
 }
 
 func (o *OpenShift) Project() (string, error) {
-
-	openshiftConfig, err := o.Factory.OpenShiftClientConfig.RawConfig()
+	openshiftConfig, err := o.Factory.OpenShiftClientConfig().RawConfig()
 	if err != nil {
 		return "", err
 	}
@@ -77,7 +75,7 @@ func (o *OpenShift) Status() string {
 
 func (o *OpenShift) WhoAmI() (string, error) {
 	if o.Token != "" {
-		cfg, err := o.Factory.OpenShiftClientConfig.ClientConfig()
+		cfg, err := o.Factory.OpenShiftClientConfig().ClientConfig()
 		if err != nil {
 			return "", err
 		}
@@ -87,7 +85,7 @@ func (o *OpenShift) WhoAmI() (string, error) {
 		return cfg.BearerToken, nil
 	}
 	if o.Context != "" {
-		cfg, err := o.Factory.OpenShiftClientConfig.RawConfig()
+		cfg, err := o.Factory.OpenShiftClientConfig().RawConfig()
 		if err != nil {
 			return "", err
 		}

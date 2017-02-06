@@ -1,96 +1,168 @@
 package gopenshift
 
+// TODO: CONVERT TO THE ACTUAL OBJECTS
 import (
 	"fmt"
 
+	kapi "k8s.io/kubernetes/pkg/api"
+	ekapi "k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
+	"k8s.io/kubernetes/pkg/runtime"
+
+	buildapi "github.com/openshift/origin/pkg/build/api"
+	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	routeapi "github.com/openshift/origin/pkg/route/api"
 )
 
 // TODO: Since we'll be watching this stuff we should implement the watcher logic
 //       from the client
 // TODO: We are missing a lot of stuff for getting "all"
-func (o *OpenShift) Get(reqResource string) ([]map[string]string, error) {
-	var result []map[string]string
+// TODO: Find a way to decide when to print all namespaces
+func (o *OpenShift) Get(reqResource string) ([]runtime.Object, error) {
+	var result []runtime.Object
 
-	// TODO: Find a way to decide when to print all namespaces
-	allNamespaces := false
-
-	cmdNamespace, enforceNamespace, err := o.Factory.DefaultNamespace()
+	cmdNamespace, _, err := o.Factory.DefaultNamespace()
 	if err != nil {
-		return []map[string]string{}, err
+		return nil, err
 	}
 
 	// TODO: Comment on what this does
-	stuff := []string{}
-	r := resource.NewBuilder(o.Mapper, o.Typer, resource.ClientMapperFunc(o.Factory.ClientForMapping), o.Factory.Decoder(true)).
-		NamespaceParam(cmdNamespace).DefaultNamespace().AllNamespaces(allNamespaces).
-		FilenameParam(enforceNamespace, false, stuff...).
+
+	r := resource.NewBuilder(o.Mapper, o.Typer, resource.ClientMapperFunc(o.Factory.ClientForMapping), runtime.UnstructuredJSONScheme).
+		NamespaceParam(cmdNamespace).DefaultNamespace().AllNamespaces(false).
 		SelectorParam("").
 		ExportParam(false).
 		ResourceTypeOrNameArgs(true, reqResource).
 		ContinueOnError().
 		Latest().
 		Flatten().
+		RequireObject(true).
+		SingleResourceType().
 		Do()
 
 	err = r.Err()
 	if err != nil {
-		return []map[string]string{}, err
+		return nil, err
 	}
 
 	infos, err := r.Infos()
 	if err != nil {
-		return []map[string]string{}, err
+		return nil, err
 	}
 
-	for ix := range infos {
-		currentObject := make(map[string]string)
+	if len(infos) == 0 {
+		return nil, fmt.Errorf("No items found")
+	}
 
-		currentObject, _ = infos[ix].ResourceMapping().Labels(infos[ix].Object)
-
-		fmt.Println("LABELS")
-		for k, v := range currentObject {
-			fmt.Printf("%s: %s\n", k, v)
-		}
-
-		infos[ix].ResourceMapping()
-
-		result = append(result, currentObject)
+	for _, info := range infos {
+		result = append(result, info.Object)
 	}
 
 	return result, nil
 }
 
-func (o *OpenShift) GetPods() ([]map[string]string, error) {
-	return o.Get("pods")
+func (o *OpenShift) GetPods() ([]*kapi.Pod, error) {
+	pods := []*kapi.Pod{}
+
+	objects, err := o.Get("po")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, object := range objects {
+		if pod := object.(*kapi.Pod); pod != nil {
+			pods = append(pods, pod)
+		}
+	}
+
+	return pods, nil
 }
 
-func (o *OpenShift) GetServices() ([]map[string]string, error) {
-	return o.Get("svc")
+func (o *OpenShift) GetServices() ([]*kapi.Service, error) {
+	services := []*kapi.Service{}
+
+	objects, err := o.Get("svc")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, object := range objects {
+		if service := object.(*kapi.Service); service != nil {
+			services = append(services, service)
+		}
+	}
+
+	return services, nil
 }
 
-var podColumns = []string{"NAME", "READY", "STATUS", "RESTARTS", "AGE"}
-var podTemplateColumns = []string{"TEMPLATE", "CONTAINER(S)", "IMAGE(S)", "PODLABELS"}
-var replicationControllerColumns = []string{"NAME", "DESIRED", "CURRENT", "AGE"}
-var replicaSetColumns = []string{"NAME", "DESIRED", "CURRENT", "AGE"}
-var jobColumns = []string{"NAME", "DESIRED", "SUCCESSFUL", "AGE"}
-var serviceColumns = []string{"NAME", "CLUSTER-IP", "EXTERNAL-IP", "PORT(S)", "AGE"}
-var ingressColumns = []string{"NAME", "HOSTS", "ADDRESS", "PORTS", "AGE"}
-var petSetColumns = []string{"NAME", "DESIRED", "CURRENT", "AGE"}
-var endpointColumns = []string{"NAME", "ENDPOINTS", "AGE"}
-var nodeColumns = []string{"NAME", "STATUS", "AGE"}
-var daemonSetColumns = []string{"NAME", "DESIRED", "CURRENT", "NODE-SELECTOR", "AGE"}
-var eventColumns = []string{"LASTSEEN", "FIRSTSEEN", "COUNT", "NAME", "KIND", "SUBOBJECT", "TYPE", "REASON", "SOURCE", "MESSAGE"}
-var limitRangeColumns = []string{"NAME", "AGE"}
-var resourceQuotaColumns = []string{"NAME", "AGE"}
-var namespaceColumns = []string{"NAME", "STATUS", "AGE"}
-var secretColumns = []string{"NAME", "TYPE", "DATA", "AGE"}
-var serviceAccountColumns = []string{"NAME", "SECRETS", "AGE"}
-var persistentVolumeColumns = []string{"NAME", "CAPACITY", "ACCESSMODES", "STATUS", "CLAIM", "REASON", "AGE"}
-var persistentVolumeClaimColumns = []string{"NAME", "STATUS", "VOLUME", "CAPACITY", "ACCESSMODES", "AGE"}
-var componentStatusColumns = []string{"NAME", "STATUS", "MESSAGE", "ERROR"}
-var thirdPartyResourceColumns = []string{"NAME", "DESCRIPTION", "VERSION(S)"}
-var roleColumns = []string{"NAME", "AGE"}
-var roleBindingColumns = []string{"NAME", "AGE"}
-var clusterRoleColumns = []string{"NAME", "AGE"}
-var clusterRoleBindingColumns = []string{"NAME", "AGE"}
+// TODO: Possibly broken
+func (o *OpenShift) GetDeployments() ([]*ekapi.Deployment, error) {
+	deployments := []*ekapi.Deployment{}
+
+	objects, err := o.Get("deploy")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, object := range objects {
+		if deployment := object.(*ekapi.Deployment); deployment != nil {
+			deployments = append(deployments, deployment)
+		}
+	}
+
+	return deployments, nil
+}
+
+// TODO: broken
+func (o *OpenShift) GetBuilds() ([]*buildapi.Build, error) {
+	builds := []*buildapi.Build{}
+
+	objects, err := o.Get("builds")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, object := range objects {
+		if build := object.(*buildapi.Build); build != nil {
+			builds = append(builds, build)
+		}
+	}
+
+	return builds, nil
+}
+
+// TODO: broken
+func (o *OpenShift) GetRoutes() ([]*routeapi.Route, error) {
+	routes := []*routeapi.Route{}
+
+	objects, err := o.Get("routes")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, object := range objects {
+		if route := object.(*routeapi.Route); route != nil {
+			routes = append(routes, route)
+		}
+	}
+
+	return routes, nil
+}
+
+// TODO: broken
+func (o *OpenShift) GetDeploymentConfigs() ([]*deployapi.DeploymentConfig, error) {
+	deploys := []*deployapi.DeploymentConfig{}
+
+	objects, err := o.Get("dc")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, object := range objects {
+		if deploy := object.(*deployapi.DeploymentConfig); deploy != nil {
+			deploys = append(deploys, deploy)
+		}
+	}
+
+	return deploys, nil
+}

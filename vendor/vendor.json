@@ -1,0 +1,47 @@
+{
+	"comment": "",
+	"ignore": "",
+	"package": [
+		{
+			"path": "appengine",
+			"revision": ""
+		},
+		{
+			"path": "appengine_internal",
+			"revision": ""
+		},
+		{
+			"path": "appengine_internal/base",
+			"revision": ""
+		},
+		{
+			"checksumSHA1": "S+w0593+AliHhi8lgI7barGOfLQ=",
+			"path": "github.com/docker/distribution/registry/storage/driver/testsuites",
+			"revision": "fb0bebc4b64e3881cc52a2478d749845ed76d2a8",
+			"revisionTime": "2017-01-27T23:42:54Z"
+		},
+		{
+			"checksumSHA1": "QtAbHtHmDzcf6vOV9eqlCpKgjiw=",
+			"path": "google.golang.org/appengine/internal/urlfetch",
+			"revision": "a2c54d2174c17540446e0ced57d9d459af61bc1c",
+			"revisionTime": "2017-01-21T00:08:17Z"
+		},
+		{
+			"checksumSHA1": "akOV9pYnCbcPA8wJUutSQVibdyg=",
+			"path": "google.golang.org/appengine/urlfetch",
+			"revision": "a2c54d2174c17540446e0ced57d9d459af61bc1c",
+			"revisionTime": "2017-01-21T00:08:17Z"
+		},
+		{
+			"checksumSHA1": "h+lbbeCD9fk1kphsGjAomegTg6w=",
+			"path": "k8s.io/kubernetes/pkg/auth/user",
+			"revision": "0e5cda9893931a76ae22b95a70c506d18332c18c",
+			"revisionTime": "2017-02-02T14:15:30Z"
+		},
+		{
+			"path": "k8s.io/kubernetes/plugin/pkg/auth/authenticator/token/tokentest",
+			"revision": ""
+		}
+	],
+	"rootPath": "github.com/openshift/origin"
+}
