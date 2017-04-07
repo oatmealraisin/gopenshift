@@ -42,12 +42,19 @@ type Layered struct {
 
 // New creates a Layered builder.
 func New(config *api.Config, fs util.FileSystem, scripts build.ScriptsHandler, overrides build.Overrides) (*Layered, error) {
+	excludePattern, err := regexp.Compile(config.ExcludeRegExp)
+	if err != nil {
+		return nil, err
+	}
+
 	d, err := docker.New(config.DockerConfig, config.PullAuthentication)
 	if err != nil {
 		return nil, err
 	}
+
 	tarHandler := tar.New(fs)
-	tarHandler.SetExclusionPattern(regexp.MustCompile(config.ExcludeRegExp))
+	tarHandler.SetExclusionPattern(excludePattern)
+
 	return &Layered{
 		docker:  d,
 		config:  config,
@@ -169,7 +176,10 @@ func (builder *Layered) Build(config *api.Config) (*api.Result, error) {
 	docker.StreamContainerIO(outReader, nil, func(s string) { glog.V(2).Info(s) })
 
 	glog.V(2).Infof("Building new image %s with scripts and sources already inside", newBuilderImage)
-	if err := builder.docker.BuildImage(opts); err != nil {
+	startTime := time.Now()
+	err := builder.docker.BuildImage(opts)
+	buildResult.BuildInfo.Stages = api.RecordStageAndStepInfo(buildResult.BuildInfo.Stages, api.StageBuild, api.StepBuildDockerImage, startTime, time.Now())
+	if err != nil {
 		buildResult.BuildInfo.FailureReason = utilstatus.NewFailureReason(
 			utilstatus.ReasonDockerImageBuildFailed,
 			utilstatus.ReasonMessageDockerImageBuildFailed,
@@ -199,7 +209,10 @@ func (builder *Layered) Build(config *api.Config) (*api.Result, error) {
 	}
 
 	glog.V(2).Infof("Building %s using sti-enabled image", builder.config.Tag)
-	if err := builder.scripts.Execute(api.Assemble, config.AssembleUser, builder.config); err != nil {
+	startTime = time.Now()
+	err = builder.scripts.Execute(api.Assemble, config.AssembleUser, builder.config)
+	buildResult.BuildInfo.Stages = api.RecordStageAndStepInfo(buildResult.BuildInfo.Stages, api.StageAssemble, api.StepAssembleBuildScripts, startTime, time.Now())
+	if err != nil {
 		buildResult.BuildInfo.FailureReason = utilstatus.NewFailureReason(
 			utilstatus.ReasonAssembleFailed,
 			utilstatus.ReasonMessageAssembleFailed,

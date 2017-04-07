@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/openshift/source-to-image/pkg/api"
 	"github.com/openshift/source-to-image/pkg/build"
@@ -36,6 +37,8 @@ var (
 		api.DefaultScripts,
 		api.UserScripts,
 	}
+
+	errMissingRequirements = errors.New("missing requirements")
 )
 
 // STI strategy executes the S2I build.
@@ -84,6 +87,11 @@ type STI struct {
 // be used for the case that the base Docker image does not have 'tar' or 'bash'
 // installed.
 func New(config *api.Config, fs util.FileSystem, overrides build.Overrides) (*STI, error) {
+	excludePattern, err := regexp.Compile(config.ExcludeRegExp)
+	if err != nil {
+		return nil, err
+	}
+
 	docker, err := dockerpkg.New(config.DockerConfig, config.PullAuthentication)
 	if err != nil {
 		return nil, err
@@ -105,7 +113,7 @@ func New(config *api.Config, fs util.FileSystem, overrides build.Overrides) (*ST
 		fs,
 	)
 	tarHandler := tar.New(fs)
-	tarHandler.SetExclusionPattern(regexp.MustCompile(config.ExcludeRegExp))
+	tarHandler.SetExclusionPattern(excludePattern)
 
 	builder := &STI{
 		installer:              inst,
@@ -196,7 +204,6 @@ func (builder *STI) Build(config *api.Config) (*api.Result, error) {
 	defer builder.garbage.Cleanup(config)
 
 	glog.V(1).Infof("Preparing to build %s", config.Tag)
-	// The failure reason is updated inside the Prepare function.
 	if err := builder.preparer.Prepare(config); err != nil {
 		return builder.result, err
 	}
@@ -221,10 +228,13 @@ func (builder *STI) Build(config *api.Config) (*api.Result, error) {
 	} else {
 		glog.V(1).Infof("Running %q in %q", api.Assemble, config.Tag)
 	}
+	startTime := time.Now()
 	if err := builder.scripts.Execute(api.Assemble, config.AssembleUser, config); err != nil {
-
-		switch e := err.(type) {
-		case s2ierr.ContainerError:
+		if err == errMissingRequirements {
+			glog.V(1).Info("Image is missing basic requirements (sh or tar), layered build will be performed")
+			return builder.layered.Build(config)
+		}
+		if e, ok := err.(s2ierr.ContainerError); ok {
 			if !isMissingRequirements(e.Output) {
 				builder.result.BuildInfo.FailureReason = utilstatus.NewFailureReason(
 					utilstatus.ReasonAssembleFailed,
@@ -233,11 +243,13 @@ func (builder *STI) Build(config *api.Config) (*api.Result, error) {
 				return builder.result, err
 			}
 			glog.V(1).Info("Image is missing basic requirements (sh or tar), layered build will be performed")
-			return builder.layered.Build(config)
-		default:
-			return builder.result, err
+			buildResult, err := builder.layered.Build(config)
+			return buildResult, err
 		}
+
+		return builder.result, err
 	}
+	builder.result.BuildInfo.Stages = api.RecordStageAndStepInfo(builder.result.BuildInfo.Stages, api.StageAssemble, api.StepAssembleBuildScripts, startTime, time.Now())
 	builder.result.Success = true
 
 	return builder.result, nil
@@ -265,7 +277,11 @@ func (builder *STI) Prepare(config *api.Config) error {
 	builder.result.WorkingDir = config.WorkingDir
 
 	if len(config.RuntimeImage) > 0 {
-		if err = dockerpkg.GetRuntimeImage(config, builder.runtimeDocker); err != nil {
+		startTime := time.Now()
+		dockerpkg.GetRuntimeImage(config, builder.runtimeDocker)
+		builder.result.BuildInfo.Stages = api.RecordStageAndStepInfo(builder.result.BuildInfo.Stages, api.StagePullImages, api.StepPullRuntimeImage, startTime, time.Now())
+
+		if err != nil {
 			builder.result.BuildInfo.FailureReason = utilstatus.NewFailureReason(
 				utilstatus.ReasonPullRuntimeImageFailed,
 				utilstatus.ReasonMessagePullRuntimeImageFailed,
@@ -455,7 +471,10 @@ func (builder *STI) Exists(config *api.Config) bool {
 
 	tag := firstNonEmpty(config.IncrementalFromTag, config.Tag)
 
-	result, err := dockerpkg.PullImage(tag, builder.incrementalDocker, policy, false)
+	startTime := time.Now()
+	result, err := dockerpkg.PullImage(tag, builder.incrementalDocker, policy)
+	builder.result.BuildInfo.Stages = api.RecordStageAndStepInfo(builder.result.BuildInfo.Stages, api.StagePullImages, api.StepPullPreviousImage, startTime, time.Now())
+
 	if err != nil {
 		builder.result.BuildInfo.FailureReason = utilstatus.NewFailureReason(
 			utilstatus.ReasonPullPreviousImageFailed,
@@ -468,8 +487,8 @@ func (builder *STI) Exists(config *api.Config) bool {
 	return result.Image != nil && builder.installedScripts[api.SaveArtifacts]
 }
 
-// Save extracts and restores the build artifacts from the previous build to a
-// current build.
+// Save extracts and restores the build artifacts from the previous build to
+// the current build.
 func (builder *STI) Save(config *api.Config) (err error) {
 	artifactTmpDir := filepath.Join(config.WorkingDir, "upload", "artifacts")
 	if builder.result == nil {
@@ -490,8 +509,10 @@ func (builder *STI) Save(config *api.Config) (err error) {
 	errReader, errWriter := io.Pipe()
 	glog.V(1).Infof("Saving build artifacts from image %s to path %s", image, artifactTmpDir)
 	extractFunc := func(string) error {
+		startTime := time.Now()
 		extractErr := builder.tar.ExtractTarStream(artifactTmpDir, outReader)
 		io.Copy(ioutil.Discard, outReader) // must ensure reader from container is drained
+		builder.result.BuildInfo.Stages = api.RecordStageAndStepInfo(builder.result.BuildInfo.Stages, api.StageRetrieve, api.StepRetrievePreviousArtifacts, startTime, time.Now())
 		return extractErr
 	}
 
@@ -573,7 +594,7 @@ func (builder *STI) Execute(command string, user string, config *api.Config) err
 		NetworkMode:     string(config.DockerNetworkMode),
 		CGroupLimits:    config.CGroupLimits,
 		CapDrop:         config.DropCapabilities,
-		Binds:           config.BuildVolumes.AsBinds(),
+		Binds:           config.BuildVolumes,
 	}
 
 	// If there are injections specified, override the original assemble script
@@ -599,6 +620,9 @@ func (builder *STI) Execute(command string, user string, config *api.Config) err
 			return err
 		}
 		rmScript, err := util.CreateInjectedFilesRemovalScript(injectedFiles, "/tmp/rm-injections")
+		if len(rmScript) != 0 {
+			defer os.Remove(rmScript)
+		}
 		if err != nil {
 			builder.result.BuildInfo.FailureReason = utilstatus.NewFailureReason(
 				utilstatus.ReasonGenericS2IBuildFailed,
@@ -606,9 +630,8 @@ func (builder *STI) Execute(command string, user string, config *api.Config) err
 			)
 			return err
 		}
-		defer os.Remove(rmScript)
 		opts.CommandOverrides = func(cmd string) string {
-			return fmt.Sprintf("while [ ! -f %q ]; do sleep 0.5; done; %s; result=$?; source %[1]s; exit $result",
+			return fmt.Sprintf("while [ ! -f %q ]; do sleep 0.5; done; %s; result=$?; . %[1]s; exit $result",
 				"/tmp/rm-injections", cmd)
 		}
 		originalOnStart := opts.OnStart
@@ -660,10 +683,15 @@ func (builder *STI) Execute(command string, user string, config *api.Config) err
 	c := dockerpkg.StreamContainerIO(errReader, &errOutput, func(s string) { glog.Info(s) })
 
 	err := builder.docker.RunContainer(opts)
-	if e, ok := err.(s2ierr.ContainerError); ok {
+	if err != nil {
 		// Must wait for StreamContainerIO goroutine above to exit before reading errOutput.
 		<-c
-		err = s2ierr.NewContainerError(config.BuilderImage, e.ErrorCode, errOutput)
+
+		if isMissingRequirements(errOutput) {
+			err = errMissingRequirements
+		} else if e, ok := err.(s2ierr.ContainerError); ok {
+			err = s2ierr.NewContainerError(config.BuilderImage, e.ErrorCode, errOutput)
+		}
 	}
 
 	return err

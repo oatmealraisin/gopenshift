@@ -49,7 +49,7 @@ func TestGet(oc *gopenshift.OpenShift) error {
 		"builds",
 	} {
 		fmt.Println(resource)
-		objects, err := oc.Get(resource)
+		_, err := oc.Get(resource)
 		if err != nil {
 			return err
 		}

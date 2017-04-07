@@ -1,14 +1,12 @@
 package gopenshift
 
-// TODO: CONVERT TO THE ACTUAL OBJECTS
 import (
-	"fmt"
-
 	kapi "k8s.io/kubernetes/pkg/api"
 	ekapi "k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 	"k8s.io/kubernetes/pkg/runtime"
 
+	_ "github.com/openshift/origin/pkg/api/install"
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	routeapi "github.com/openshift/origin/pkg/route/api"
@@ -50,9 +48,9 @@ func (o *OpenShift) Get(reqResource string) ([]runtime.Object, error) {
 		return nil, err
 	}
 
-	if len(infos) == 0 {
-		return nil, fmt.Errorf("No items found")
-	}
+	//if len(infos) == 0 {
+	//	return nil, fmt.Errorf("No items found")
+	//}
 
 	for _, info := range infos {
 		result = append(result, info.Object)
@@ -95,7 +93,6 @@ func (o *OpenShift) GetServices() ([]*kapi.Service, error) {
 	return services, nil
 }
 
-// TODO: Possibly broken
 func (o *OpenShift) GetDeployments() ([]*ekapi.Deployment, error) {
 	deployments := []*ekapi.Deployment{}
 
@@ -113,7 +110,6 @@ func (o *OpenShift) GetDeployments() ([]*ekapi.Deployment, error) {
 	return deployments, nil
 }
 
-// TODO: broken
 func (o *OpenShift) GetBuilds() ([]*buildapi.Build, error) {
 	builds := []*buildapi.Build{}
 
@@ -131,7 +127,6 @@ func (o *OpenShift) GetBuilds() ([]*buildapi.Build, error) {
 	return builds, nil
 }
 
-// TODO: broken
 func (o *OpenShift) GetRoutes() ([]*routeapi.Route, error) {
 	routes := []*routeapi.Route{}
 
@@ -149,7 +144,6 @@ func (o *OpenShift) GetRoutes() ([]*routeapi.Route, error) {
 	return routes, nil
 }
 
-// TODO: broken
 func (o *OpenShift) GetDeploymentConfigs() ([]*deployapi.DeploymentConfig, error) {
 	deploys := []*deployapi.DeploymentConfig{}
 
